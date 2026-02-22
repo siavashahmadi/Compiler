@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { Language, PistonRequest, PistonResponse, ExecutionResult } from '../types';
 
-const BASE_URL = 'https://emkc.org/api/v2/piston';
+// Set EXPO_PUBLIC_API_URL in .env.local (see .env.example)
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v2/piston';
 
 // Piston runtime config per language.
 // Versions fetched from: GET https://emkc.org/api/v2/piston/runtimes

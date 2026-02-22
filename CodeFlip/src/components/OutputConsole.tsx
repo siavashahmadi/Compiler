@@ -105,7 +105,7 @@ export default function OutputConsole({ result, isRunning, onClear }: Props) {
         {isRunning && (
           <View style={styles.runningRow}>
             <ActivityIndicator size="small" color={Colors.warning} />
-            <Text style={styles.runningText}>Executing on Piston runtime...</Text>
+            <Text style={styles.runningText}>Executing on local runtime...</Text>
           </View>
         )}
 
