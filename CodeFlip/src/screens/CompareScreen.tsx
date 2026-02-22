@@ -5,10 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   Dimensions,
-  Animated,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore, useCurrentProblem } from '../store/useStore';
 import CodeEditor from '../components/CodeEditor';
 import OutputConsole from '../components/OutputConsole';

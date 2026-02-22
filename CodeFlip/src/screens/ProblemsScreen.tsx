@@ -7,10 +7,10 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  SafeAreaView,
   Modal,
   Pressable,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../store/useStore';
 import { Problem } from '../types';
 import { Colors, Spacing, Radius, Typography } from '../constants/theme';

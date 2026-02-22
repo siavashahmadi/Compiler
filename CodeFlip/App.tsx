@@ -2,6 +2,8 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar, Text } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import EditorScreen from './src/screens/EditorScreen';
 import CompareScreen from './src/screens/CompareScreen';
@@ -41,6 +43,8 @@ export default function App() {
   }, []);
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+    <SafeAreaProvider>
     <NavigationContainer
       theme={{
         dark: true,
@@ -88,5 +92,7 @@ export default function App() {
         <Tab.Screen name="Compare" component={CompareScreen} />
       </Tab.Navigator>
     </NavigationContainer>
+    </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
