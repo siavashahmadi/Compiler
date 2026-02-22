@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
+  Modal,
+  Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '../constants/theme';
 import { ExecutionResult } from '../types';
 
@@ -19,8 +22,11 @@ interface Props {
 
 export default function OutputConsole({ result, isRunning, onClear }: Props) {
   const scrollRef = useRef<ScrollView>(null);
+  const expandedScrollRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [expanded, setExpanded] = useState(false);
 
+  // Pulse animation while running
   useEffect(() => {
     if (isRunning) {
       Animated.loop(
@@ -35,109 +41,205 @@ export default function OutputConsole({ result, isRunning, onClear }: Props) {
     }
   }, [isRunning]);
 
+  // Scroll to bottom on new result
   useEffect(() => {
     if (result) {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+      setTimeout(() => expandedScrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [result]);
 
+  // Auto-open expanded view when a new result arrives
+  useEffect(() => {
+    if (result && !isRunning) {
+      setExpanded(true);
+    }
+  }, [result?.executedAt]);
+
+  const handleClear = useCallback(() => {
+    onClear();
+    setExpanded(false);
+  }, [onClear]);
+
   const hasError = result && (result.stderr || result.exitCode !== 0);
   const isEmpty = !result && !isRunning;
+  const canExpand = !!result || isRunning;
 
-  const renderStatusDot = () => {
-    if (isRunning) return null;
-    if (!result) return null;
-    const color = hasError ? Colors.consoleError : Colors.consoleSuccess;
-    return <View style={[styles.statusDot, { backgroundColor: color }]} />;
-  };
+  // Shared sub-elements
+  const statusDot = isRunning ? (
+    <Animated.View style={{ opacity: pulseAnim }}>
+      <View style={[styles.statusDot, { backgroundColor: Colors.warning }]} />
+    </Animated.View>
+  ) : result ? (
+    <View style={[styles.statusDot, { backgroundColor: hasError ? Colors.consoleError : Colors.consoleSuccess }]} />
+  ) : null;
+
+  const exitBadge = result ? (
+    <View style={[styles.exitBadge, { backgroundColor: hasError ? Colors.danger + '22' : Colors.accentRun + '22' }]}>
+      <Text style={[styles.exitBadgeText, { color: hasError ? Colors.danger : Colors.consoleSuccess }]}>
+        exit {result.exitCode}
+      </Text>
+    </View>
+  ) : null;
+
+  // Output content — horizontal scroll for long lines only in modal
+  const outputBody = (isModal: boolean) => (
+    <>
+      {isEmpty && (
+        <Text style={styles.placeholder}>Press Run to execute your code</Text>
+      )}
+
+      {isRunning && (
+        <View style={styles.runningRow}>
+          <ActivityIndicator size="small" color={Colors.warning} />
+          <Text style={styles.runningText}>Executing on local runtime...</Text>
+        </View>
+      )}
+
+      {result && (
+        <>
+          <Text style={styles.timestamp}>
+            {new Date(result.executedAt).toLocaleTimeString()} · {result.language}
+          </Text>
+
+          {result.stdout ? (
+            isModal ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.hScroll}
+                scrollEventThrottle={16}
+              >
+                <Text style={styles.stdout} selectable>{result.stdout}</Text>
+              </ScrollView>
+            ) : (
+              <Text style={styles.stdout} selectable>{result.stdout}</Text>
+            )
+          ) : !result.stderr ? (
+            <Text style={styles.noOutput}>(no output)</Text>
+          ) : null}
+
+          {result.stderr ? (
+            <View style={styles.stderrBlock}>
+              <Text style={styles.stderrLabel}>stderr</Text>
+              {isModal ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.hScroll}
+                  scrollEventThrottle={16}
+                >
+                  <Text style={styles.stderr} selectable>{result.stderr}</Text>
+                </ScrollView>
+              ) : (
+                <Text style={styles.stderr} selectable>{result.stderr}</Text>
+              )}
+            </View>
+          ) : null}
+        </>
+      )}
+    </>
+  );
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          {renderStatusDot()}
-          {isRunning && (
-            <Animated.View style={{ opacity: pulseAnim }}>
-              <View style={[styles.statusDot, { backgroundColor: Colors.warning }]} />
-            </Animated.View>
-          )}
-          <Text style={styles.headerTitle}>
-            {isRunning ? 'Running...' : 'Output'}
-          </Text>
+    <>
+      {/* ── Collapsed console ── */}
+      <View style={styles.container}>
+        <View style={styles.header}>
+          {/* Left side: tap area to expand */}
+          <TouchableOpacity
+            style={styles.headerLeft}
+            onPress={() => canExpand && setExpanded(true)}
+            disabled={!canExpand}
+            activeOpacity={0.6}
+          >
+            {statusDot}
+            <Text style={styles.headerTitle}>
+              {isRunning ? 'Running...' : 'Output'}
+            </Text>
+            {exitBadge}
+            {canExpand && <Text style={styles.expandArrow}>↗</Text>}
+          </TouchableOpacity>
+
+          {/* Right side: clear button */}
           {result && (
-            <View style={[
-              styles.exitBadge,
-              { backgroundColor: hasError ? Colors.danger + '22' : Colors.accentRun + '22' }
-            ]}>
-              <Text style={[
-                styles.exitBadgeText,
-                { color: hasError ? Colors.danger : Colors.consoleSuccess }
-              ]}>
-                exit {result.exitCode}
-              </Text>
-            </View>
+            <TouchableOpacity
+              onPress={handleClear}
+              style={styles.clearBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.clearBtnText}>Clear</Text>
+            </TouchableOpacity>
           )}
         </View>
 
-        {result && (
-          <TouchableOpacity onPress={onClear} style={styles.clearBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.clearBtnText}>Clear</Text>
-          </TouchableOpacity>
-        )}
+        <ScrollView
+          ref={scrollRef}
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          showsVerticalScrollIndicator
+          indicatorStyle="white"
+          keyboardShouldPersistTaps="handled"
+        >
+          {outputBody(false)}
+        </ScrollView>
       </View>
 
-      {/* Console body */}
-      <ScrollView
-        ref={scrollRef}
-        style={styles.body}
-        contentContainerStyle={styles.bodyContent}
-        showsVerticalScrollIndicator
-        indicatorStyle="white"
-        keyboardShouldPersistTaps="handled"
+      {/* ── Expanded modal ── */}
+      <Modal
+        visible={expanded}
+        animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : undefined}
+        onRequestClose={() => setExpanded(false)}
       >
-        {isEmpty && (
-          <Text style={styles.placeholder}>
-            Press Run to execute your code
-          </Text>
-        )}
-
-        {isRunning && (
-          <View style={styles.runningRow}>
-            <ActivityIndicator size="small" color={Colors.warning} />
-            <Text style={styles.runningText}>Executing on local runtime...</Text>
+        <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom']}>
+          {/* Drag handle */}
+          <View style={styles.dragHandleRow}>
+            <View style={styles.dragHandle} />
           </View>
-        )}
 
-        {result && (
-          <>
-            {/* Timestamp */}
-            <Text style={styles.timestamp}>
-              {new Date(result.executedAt).toLocaleTimeString()} · {result.language}
-            </Text>
+          {/* Modal header */}
+          <View style={styles.modalHeader}>
+            <View style={styles.headerLeft}>
+              {statusDot}
+              <Text style={[styles.headerTitle, styles.modalTitle]}>Output</Text>
+              {exitBadge}
+            </View>
+            <View style={styles.modalHeaderRight}>
+              {result && (
+                <TouchableOpacity
+                  onPress={handleClear}
+                  style={styles.clearBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.clearBtnText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => setExpanded(false)} style={styles.doneBtn}>
+                <Text style={styles.doneBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-            {/* stdout */}
-            {result.stdout ? (
-              <Text style={styles.stdout} selectable>{result.stdout}</Text>
-            ) : !result.stderr ? (
-              <Text style={styles.noOutput}>(no output)</Text>
-            ) : null}
-
-            {/* stderr */}
-            {result.stderr ? (
-              <View style={styles.stderrBlock}>
-                <Text style={styles.stderrLabel}>stderr</Text>
-                <Text style={styles.stderr} selectable>{result.stderr}</Text>
-              </View>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
-    </View>
+          {/* Modal body — full height, horizontal scroll for long lines */}
+          <ScrollView
+            ref={expandedScrollRef}
+            style={styles.modalBody}
+            contentContainerStyle={[styles.bodyContent, styles.modalBodyContent]}
+            showsVerticalScrollIndicator
+            indicatorStyle="white"
+            keyboardShouldPersistTaps="handled"
+          >
+            {outputBody(true)}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  // ── Collapsed ──
   container: {
     backgroundColor: Colors.consoleBg,
     borderTopWidth: 1,
@@ -159,6 +261,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    flex: 1,
   },
   headerTitle: {
     color: Colors.textMuted,
@@ -182,6 +285,11 @@ const styles = StyleSheet.create({
     fontFamily: Typography.mono,
     fontSize: 11,
     fontWeight: '600',
+  },
+  expandArrow: {
+    color: Colors.textFaint,
+    fontSize: 14,
+    marginLeft: Spacing.xs,
   },
   clearBtn: {
     paddingHorizontal: Spacing.sm,
@@ -225,6 +333,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginBottom: Spacing.sm,
   },
+  hScroll: {
+    marginBottom: Spacing.xs,
+  },
   stdout: {
     color: Colors.consoleText,
     fontFamily: Typography.mono,
@@ -259,5 +370,60 @@ const styles = StyleSheet.create({
     fontFamily: Typography.mono,
     fontSize: Typography.consoleSize,
     lineHeight: 20,
+  },
+
+  // ── Modal ──
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.bg1,
+  },
+  dragHandleRow: {
+    alignItems: 'center',
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  dragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: 15,
+  },
+  modalHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  doneBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 5,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.accent + '22',
+    borderWidth: 1,
+    borderColor: Colors.accent + '55',
+  },
+  doneBtnText: {
+    color: Colors.accent,
+    fontSize: 13,
+    fontFamily: Typography.mono,
+    fontWeight: '600',
+  },
+  modalBody: {
+    flex: 1,
+    backgroundColor: Colors.consoleBg,
+  },
+  modalBodyContent: {
+    paddingBottom: 40,
   },
 });
